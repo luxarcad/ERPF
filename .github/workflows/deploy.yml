@@ -1,0 +1,68 @@
+
+name: Deploy React Vite Demo
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'demo/**'
+      - '.github/workflows/deploy.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and Deploy Demo
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # Descargar el repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Instalar Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: demo/package-lock.json
+
+      # Instalar dependencias de la demo
+      - name: Install dependencies
+        working-directory: demo
+        run: npm ci
+
+      # Compilar React + Vite
+      - name: Build demo
+        working-directory: demo
+        run: npm run build
+
+      # Configurar GitHub Pages
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      # Subir los archivos compilados
+      - name: Upload build artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: './demo/dist'
+
+      # Publicar en GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

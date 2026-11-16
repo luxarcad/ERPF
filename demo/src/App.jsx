@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   LayoutDashboard,
   Building2,
@@ -20,19 +20,15 @@ import {
   FileSpreadsheet,
   Check,
   CircleHelp,
-  ArrowDownLeft,
   Clock3,
   TrendingUp,
   MoreHorizontal,
   CalendarDays,
-  ShieldCheck,
   PanelLeftClose,
   PanelLeftOpen,
   X,
-  Sparkles,
   Activity,
   Target,
-  BookOpen,
   CircleCheck,
   LogIn,
 } from "lucide-react";
@@ -61,7 +57,7 @@ import {
   Empty,
   Modal,
 } from "./components/UI";
-import { RevenueChart, ProgressRing } from "./components/Charts";
+const Analytics = lazy(() => import("./components/Analytics"));
 import {
   ImportDialog,
   CompanyDialog,
@@ -82,19 +78,8 @@ const navigation = [
   { id: "documents", label: "Documentos", icon: FolderOpen },
   { id: "activity", label: "Actividades", icon: ClipboardList },
 ];
-const descriptions = {
-  companies:
-    "Pequeñas empresas. Grandes ideas. Un espacio para aprender haciendo.",
-  finances: "Transforma los números en decisiones para tu empresa.",
-  documents: "Todo el trabajo del equipo, organizado en un solo lugar.",
-  activity:
-    "Organiza los siguientes pasos y acompaña el avance de cada equipo.",
-  team: "Cada persona tiene un papel. Juntos, hacen que la empresa funcione.",
-  settings:
-    "Ajusta tu espacio de aprendizaje a la manera de trabajar de tu grupo.",
-};
 const titles = {
-  overview: "Vista general",
+  overview: "Resumen ejecutivo",
   companies: "Empresas",
   finances: "Finanzas",
   documents: "Documentos",
@@ -134,14 +119,29 @@ function App() {
   const canManage = professor || role === "admin";
   const canFinance = role !== "employee";
   const canImport = professor || ["admin", "finance"].includes(role);
-  const currentRole = roles.find((r) => r.id === role);
-  const scoped =
-    company === "all" ? companies : companies.filter((c) => c.id === company);
+  const scoped = useMemo(
+    () =>
+      company === "all" ? companies : companies.filter((c) => c.id === company),
+    [companies, company],
+  );
+  const roleDefinition = roles.find((r) => r.id === role);
+  const roleMember =
+    !professor && scoped[0]
+      ? membersFor(scoped[0]).find(
+          (m) => (memberRoles[m.id] || m.role) === role,
+        )
+      : null;
+  const currentRole = roleMember
+    ? {
+        ...roleDefinition,
+        name: roleMember.name,
+        initials: roleMember.initials,
+      }
+    : roleDefinition;
   const scopedIds = new Set(scoped.map((c) => c.id));
   const scopedDocs = documents.filter((d) => scopedIds.has(d.company));
   const scopedEvents = events.filter((e) => scopedIds.has(e.company));
   const scopedTasks = tasks.filter((t) => scopedIds.has(t.company));
-  const metrics = financeFor(scoped, transactions, period);
   const pendingDocs = scopedDocs.filter((d) => d.status === "Por revisar");
   const averageProgress = Math.round(
     scoped.reduce((s, c) => s + c.progress, 0) / Math.max(scoped.length, 1),
@@ -200,8 +200,7 @@ function App() {
           d.fingerprint === `${file.name}-${file.size}-${file.lastModified}`,
       )
     ) {
-      notify("Este archivo ya se importó en esa empresa durante la sesión.");
-      return;
+      return "Este archivo ya se importó en esa empresa durante la sesión.";
     }
     const id = crypto.randomUUID();
     setDocuments((prev) => [
@@ -385,7 +384,11 @@ function App() {
                 </button>
               </td>
               <td>
-                <Avatars count={c.members} color={c.color} />
+                <Avatars
+                  count={c.members}
+                  initials={membersFor(c).map((m) => m.initials)}
+                  color={c.color}
+                />
                 <small className="members-count">{c.members} integrantes</small>
               </td>
               {canFinance && (
@@ -425,7 +428,7 @@ function App() {
         <div className="table-bottom">
           <span>
             {list.length} empresas · {list.reduce((s, c) => s + c.members, 0)}{" "}
-            alumnos aprendiendo
+            integrantes
           </span>
           <span>
             <i className="live-dot" />
@@ -500,7 +503,6 @@ function App() {
           </span>
           <ChevronDown size={14} className="nav-label" />
         </button>
-        <div className="nav-heading">ESPACIO DE TRABAJO</div>
         <nav aria-label="Menú principal">
           {navigation
             .filter((n) => canFinance || n.id !== "finances")
@@ -522,9 +524,6 @@ function App() {
               </button>
             ))}
         </nav>
-        <div className="nav-heading second">
-          {professor ? "ADMINISTRACIÓN" : "MI EQUIPO"}
-        </div>
         <nav aria-label="Administración">
           <button
             title="Integrantes y roles"
@@ -546,26 +545,6 @@ function App() {
           </button>
         </nav>
         <div className="sidebar-bottom">
-          <div className="learn-card">
-            <span>
-              <Sparkles size={17} /> APRENDER HACIENDO
-            </span>
-            <h3>
-              Tu próxima gran idea
-              <br />
-              empieza aquí.
-            </h3>
-            <p>Un aula que se vive como una empresa.</p>
-            <button onClick={() => setModal({ type: "guide" })}>
-              Conoce tu espacio
-              <ArrowUpRight size={15} />
-            </button>
-            <div className="learn-decoration">
-              <i />
-              <i />
-              <i />
-            </div>
-          </div>
           <button
             className="support-button"
             onClick={() => setModal({ type: "guide" })}
@@ -662,6 +641,14 @@ function App() {
               {pendingDocs.length > 0 && <i />}
             </button>
             <button
+              className="role-selector"
+              onClick={() => setModal({ type: "role" })}
+            >
+              <span className="demo-label">Demo</span>
+              Vista de {currentRole.label.toLowerCase()}
+              <ChevronDown size={13} />
+            </button>
+            <button
               className="topbar-avatar"
               onClick={() => setModal({ type: "role" })}
               aria-label="Elegir rol de demostración"
@@ -671,42 +658,13 @@ function App() {
           </div>
         </header>
         <main id="main-content" tabIndex={-1}>
-          <div className="demo-strip">
-            <span>
-              <span className="demo-pill">
-                <i /> DEMO INTERACTIVA
-              </span>
-              <span className="demo-copy">
-                Un espacio para practicar, decidir y aprender.
-              </span>
-            </span>
-            <button onClick={() => setModal({ type: "role" })}>
-              <ShieldCheck size={14} />
-              Vista de {currentRole.label.toLowerCase()}
-              <ChevronDown size={13} />
-            </button>
-          </div>
           <div className="page-heading">
             <div>
-              <div className="eyebrow">
-                {professor
-                  ? "TU AULA, DE UN VISTAZO"
-                  : scoped[0]?.name.toUpperCase()}
-              </div>
               <h1>
-                {page === "overview"
-                  ? professor
-                    ? "Aquí empieza una gran gestión."
-                    : `Hola, ${currentRole.name.split(" ")[0]}. Vamos a crear.`
+                {page === "overview" && !canFinance
+                  ? "Mi espacio"
                   : titles[page]}
               </h1>
-              <p>
-                {page === "overview"
-                  ? professor
-                    ? "Acompaña a tus alumnos. Conecta su aprendizaje con el mundo real."
-                    : "Tu equipo, tus decisiones y todo lo que necesitan para avanzar."
-                  : descriptions[page]}
-              </p>
             </div>
             <div className="heading-buttons">
               {["overview", "finances"].includes(page) && canFinance && (
@@ -784,192 +742,60 @@ function App() {
 
           {page === "overview" && (
             <div className="page-content">
-              <div className="stats-grid">
-                <Stat
-                  title={
-                    professor ? "Empresas activas" : "Integrantes del equipo"
+              {canFinance ? (
+                <Suspense
+                  fallback={
+                    <div className="analytics-loading">
+                      Cargando indicadores…
+                    </div>
                   }
-                  value={
-                    professor
-                      ? scoped.length.toString().padStart(2, "0")
-                      : scoped[0]?.members
-                  }
-                  icon={professor ? Building2 : Users}
-                  color="blue"
-                  foot={
-                    professor
-                      ? "Ideas que se vuelven empresas"
-                      : "Un equipo, una misma meta"
-                  }
-                />
-                <Stat
-                  title={
-                    professor
-                      ? "Alumnos participando"
-                      : "Actividades completadas"
-                  }
-                  value={
-                    professor
-                      ? scoped.reduce((s, c) => s + c.members, 0)
-                      : scopedTasks.filter((t) => t.done).length
-                  }
-                  icon={Users}
-                  color="green"
-                  foot={
-                    professor
-                      ? "Equipos de 6 a 8 integrantes"
-                      : `de ${scopedTasks.length} actividades del equipo`
-                  }
-                />
-                <Stat
-                  title="Documentos compartidos"
-                  value={scopedDocs.length}
-                  icon={FileSpreadsheet}
-                  color="orange"
-                  foot={`${pendingDocs.length} pendientes de revisión`}
-                />
-                <Stat
-                  title="Avance académico"
-                  value={`${averageProgress}%`}
-                  icon={TrendingUp}
-                  color="purple"
-                  foot="Promedio de avance · ejemplo"
-                />
-              </div>
-              <div className="dashboard-charts">
-                {canFinance ? (
-                  <RevenueChart
+                >
+                  <Analytics
                     companies={scoped}
                     transactions={transactions}
                     period={period}
+                    onCompanySelect={setCompany}
+                    showHelp={settings.tips}
                   />
-                ) : (
-                  <section className="panel employee-welcome">
-                    <span className="eyebrow">TU PAPEL CUENTA</span>
-                    <h2>
-                      Las grandes empresas
-                      <br />
-                      se construyen en equipo.
-                    </h2>
-                    <p>
-                      Revisa tus actividades, consulta los documentos y comparte
-                      tus avances con tu gerente.
-                    </p>
-                    <Button
-                      variant="primary"
-                      icon={ArrowRight}
-                      onClick={() => go("activity")}
-                    >
-                      Ver mis actividades
-                    </Button>
-                    <Users size={100} strokeWidth={0.8} />
-                  </section>
-                )}
-                <section className="panel learning-panel">
-                  <SectionHead title="El aprendizaje avanza" />
-                  <div className="unit-label">
-                    <span>Unidad 2</span>Gestión financiera
-                  </div>
-                  <ProgressRing value={averageProgress} />
-                  <div className="learning-stats">
-                    <span>
-                      <i className="green-dot" />
-                      Empresas al día
-                      <strong>
-                        {scoped
-                          .filter((c) => c.status === "Al día")
-                          .length.toString()
-                          .padStart(2, "0")}
-                      </strong>
-                    </span>
-                    <span>
-                      <i className="orange-dot" />
-                      Necesitan seguimiento
-                      <strong>
-                        {scoped
-                          .filter((c) => c.status !== "Al día")
-                          .length.toString()
-                          .padStart(2, "0")}
-                      </strong>
-                    </span>
-                  </div>
-                  <button
-                    className="learning-link"
-                    onClick={() => go("activity")}
-                  >
-                    Ver actividades del grupo
-                    <ArrowRight size={15} />
-                  </button>
-                </section>
-              </div>
+                </Suspense>
+              ) : (
+                <div className="stats-grid">
+                  <Stat
+                    title="Integrantes"
+                    value={scoped[0]?.members}
+                    icon={Users}
+                    color="blue"
+                  />
+                  <Stat
+                    title="Actividades completadas"
+                    value={scopedTasks.filter((t) => t.done).length}
+                    icon={CircleCheck}
+                    color="green"
+                    foot={`de ${scopedTasks.length} actividades`}
+                  />
+                  <Stat
+                    title="Documentos"
+                    value={scopedDocs.length}
+                    icon={FileSpreadsheet}
+                    color="orange"
+                    foot={`${pendingDocs.length} por revisar`}
+                  />
+                  <Stat
+                    title="Avance académico"
+                    value={`${averageProgress}%`}
+                    icon={TrendingUp}
+                    color="purple"
+                  />
+                </div>
+              )}
               <section className="panel">
                 <SectionHead
-                  title={professor ? "Empresas de tu grupo" : "Tu empresa"}
-                  subtitle="Un equipo detrás de cada resultado."
-                  action="Ver empresas"
+                  title={professor ? "Empresas" : "Mi empresa"}
+                  action="Ver detalle"
                   onAction={() => go("companies")}
                 />
-                {companyTable(scoped, true)}
+                {companyTable(scoped)}
               </section>
-              <div className="dashboard-bottom">
-                <section className="panel">
-                  <SectionHead
-                    title="Lo que está pasando"
-                    action="Ver actividad"
-                    onAction={() => go("activity")}
-                  />
-                  {activityFeed}
-                </section>
-                <section className="next-step-card">
-                  <div className="next-step-top">
-                    <span className="next-icon">
-                      <FileSpreadsheet size={23} />
-                    </span>
-                    <span className="eyebrow">
-                      DE LOS DATOS A LAS DECISIONES
-                    </span>
-                  </div>
-                  <h2>Un Excel. Muchas respuestas.</h2>
-                  <p>
-                    Importa los movimientos de tu empresa y descubre qué cuentan
-                    sus números.
-                  </p>
-                  <div>
-                    <Button
-                      variant="primary"
-                      icon={canImport ? Upload : FolderOpen}
-                      onClick={() =>
-                        canImport
-                          ? setModal({ type: "import" })
-                          : go("documents")
-                      }
-                    >
-                      {canImport
-                        ? "Importar mi primer Excel"
-                        : "Explorar documentos"}
-                    </Button>
-                    <button
-                      className="text-button"
-                      onClick={() =>
-                        downloadWorkbook().catch(() =>
-                          notify("No se pudo descargar la plantilla."),
-                        )
-                      }
-                    >
-                      Descargar plantilla
-                      <Download size={14} />
-                    </button>
-                  </div>
-                  <div className="excel-decoration">
-                    <i />
-                    <i />
-                    <i />
-                    <i />
-                    <i />
-                    <i />
-                  </div>
-                </section>
-              </div>
             </div>
           )}
           {page === "companies" && (
@@ -980,18 +806,14 @@ function App() {
                     <Building2 size={21} />
                   </span>
                   <strong>{scoped.length}</strong>
-                  <span>
-                    {professor
-                      ? "empresas en tu aula"
-                      : "empresa para aprender"}
-                  </span>
+                  <span>{professor ? "empresas" : "empresa"}</span>
                 </div>
                 <div>
                   <span className="summary-icon green">
                     <Users size={21} />
                   </span>
                   <strong>{scoped.reduce((s, c) => s + c.members, 0)}</strong>
-                  <span>alumnos construyendo juntos</span>
+                  <span>integrantes</span>
                 </div>
                 <div>
                   <span className="summary-icon orange">
@@ -1016,69 +838,26 @@ function App() {
                 </div>
                 {companyTable(visibleCompanies, true)}
               </section>
-              {settings.tips && (
-                <div className="teaching-tip">
-                  <BookOpen size={22} />
-                  <div>
-                    <strong>Una empresa es mucho más que sus números.</strong>
-                    <p>
-                      Cada equipo cuenta con un administrador, un gerente, un
-                      financiero y empleados. Explora sus roles desde el
-                      selector de vista.
-                    </p>
-                  </div>
-                  <Button
-                    icon={ArrowRight}
-                    onClick={() => setModal({ type: "role" })}
-                  >
-                    Explorar roles
-                  </Button>
-                </div>
-              )}
             </div>
           )}
           {page === "finances" && canFinance && (
             <div className="page-content">
-              <div className="stats-grid">
-                <Stat
-                  title="Ingresos del mes"
-                  value={money(metrics.income)}
-                  icon={ArrowDownLeft}
-                  color="blue"
-                  foot="Ventas e ingresos registrados"
+              <Suspense
+                fallback={
+                  <div className="analytics-loading">Cargando indicadores…</div>
+                }
+              >
+                <Analytics
+                  companies={scoped}
+                  transactions={transactions}
+                  period={period}
+                  view="finances"
+                  onCompanySelect={setCompany}
+                  showHelp={settings.tips}
                 />
-                <Stat
-                  title="Egresos del mes"
-                  value={money(metrics.expense)}
-                  icon={ArrowUpRight}
-                  color="orange"
-                  foot="Costos y gastos registrados"
-                />
-                <Stat
-                  title="Resultado neto"
-                  value={money(metrics.profit)}
-                  icon={Wallet}
-                  color="green"
-                  foot="Ingresos menos egresos"
-                />
-                <Stat
-                  title="Margen neto"
-                  value={percent(metrics.margin)}
-                  icon={TrendingUp}
-                  color="purple"
-                  foot="Resultado neto / ingresos"
-                />
-              </div>
-              <RevenueChart
-                companies={scoped}
-                transactions={transactions}
-                period={period}
-              />
-              <section className="panel">
-                <SectionHead
-                  title="Resultados por empresa"
-                  subtitle={`${periods.find((p) => p.value === period).label} · Pesos mexicanos (MXN)`}
-                />
+              </Suspense>
+              <details className="panel finance-detail">
+                <summary>Resultados por empresa</summary>
                 <div className="table-scroll">
                   <table>
                     <thead>
@@ -1115,14 +894,17 @@ function App() {
                     </tbody>
                   </table>
                 </div>
-              </section>
-              <section className="panel">
-                <SectionHead
-                  title="Movimientos importados"
-                  subtitle="Las importaciones se suman a los datos de ejemplo del periodo correspondiente."
-                  action={canImport ? "Importar Excel" : null}
-                  onAction={() => setModal({ type: "import" })}
-                />
+              </details>
+              <details className="panel finance-detail">
+                <summary>
+                  Movimientos importados ·{" "}
+                  {
+                    transactions.filter(
+                      (t) =>
+                        scopedIds.has(t.company) && t.date.startsWith(period),
+                    ).length
+                  }
+                </summary>
                 {transactions.filter(
                   (t) => scopedIds.has(t.company) && t.date.startsWith(period),
                 ).length ? (
@@ -1171,11 +953,11 @@ function App() {
                   </div>
                 ) : (
                   <Empty
-                    title="Tus próximos números empiezan aquí"
+                    title="Sin movimientos importados"
                     text="Importa la plantilla de ejemplo para ver los movimientos de este periodo."
                   />
                 )}
-              </section>
+              </details>
             </div>
           )}
           {page === "documents" && (
@@ -1342,7 +1124,6 @@ function App() {
                         ? "Actividades de los equipos"
                         : "Actividades de mi equipo"
                     }
-                    subtitle="Las tareas completadas se guardan durante esta sesión."
                   />
                   <div className="task-filters">
                     <Filters
@@ -1596,17 +1377,15 @@ function App() {
                 />
                 <div className="setting-row">
                   <div>
-                    <strong>Consejos de aprendizaje</strong>
-                    <p>
-                      Muestra recomendaciones para familiarizarte con el ERP.
-                    </p>
+                    <strong>Ayuda en gráficos</strong>
+                    <p>Muestra los botones de ayuda sobre los indicadores.</p>
                   </div>
                   <SquishSwitch
                     checked={settings.tips}
                     onChange={(value) =>
                       setSettings((prev) => ({ ...prev, tips: value }))
                     }
-                    ariaLabel="Mostrar consejos de aprendizaje"
+                    ariaLabel="Mostrar ayuda en gráficos"
                     width={48}
                     height={27}
                     trackColor="#dce2ec"
@@ -1704,8 +1483,6 @@ function App() {
                     administra una empresa.
                   </p>
                   <div className="about-tags">
-                    <span>React + Vite</span>
-                    <span>Sin backend</span>
                     <span>Datos de ejemplo</span>
                     <span>Escritorio y tablet</span>
                   </div>
@@ -1724,15 +1501,6 @@ function App() {
               </section>
             </div>
           )}
-          <footer className="page-footer">
-            <span>
-              <Logo small />
-              Aprender a gestionar. Prepararse para crecer.
-            </span>
-            <span>
-              Nexo ERP · Propuesta académica <i /> 2026
-            </span>
-          </footer>
         </main>
       </div>
 

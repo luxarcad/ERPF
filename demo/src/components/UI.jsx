@@ -69,11 +69,11 @@ export function CompanyMark({ company, small = false }) {
     </span>
   );
 }
-export function Avatars({ count, color = "blue" }) {
+export function Avatars({ count, initials, color = "blue" }) {
   return (
     <div className="avatar-stack">
-      {["VT", "DH", "SR"].slice(0, Math.min(count, 3)).map((s, i) => (
-        <span key={s} className={`avatar avatar-${i} ${color}`}>
+      {initials.slice(0, Math.min(count, 3)).map((s, i) => (
+        <span key={`${s}-${i}`} className={`avatar avatar-${i} ${color}`}>
           {s}
         </span>
       ))}

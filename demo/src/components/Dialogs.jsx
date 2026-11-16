@@ -203,7 +203,10 @@ export function ImportDialog({
           variant="primary"
           icon={ArrowRight}
           disabled={!rows || busy || !company}
-          onClick={() => onImport({ company, file, rows })}
+          onClick={() => {
+            const importError = onImport({ company, file, rows });
+            if (importError) setError(importError);
+          }}
         >
           Importar {rows ? `${rows.length} movimientos` : "movimientos"}
         </Button>

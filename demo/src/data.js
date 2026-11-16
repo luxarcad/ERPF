@@ -239,51 +239,129 @@ export const money = (value) =>
   new Intl.NumberFormat("es-MX", {
     style: "currency",
     currency: "MXN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value);
 export const compactMoney = (value) =>
   `$${new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 2 }).format(value)}`;
 export const percent = (value) => `${value.toFixed(1)}%`;
 const incomeFactors = [0.46, 0.6, 0.54, 0.76, 0.84, 1];
 const expenseFactors = [0.55, 0.69, 0.67, 0.81, 0.9, 1];
+// Distinct seasonal scenarios; October remains the company baseline.
+const monthlyProfiles = {
+  aurora: {
+    income: [0.48, 0.64, 0.59, 0.79, 0.88, 1],
+    expense: [0.58, 0.67, 0.7, 0.83, 0.91, 1],
+  },
+  verde: {
+    income: [0.72, 0.65, 0.81, 0.89, 1.04, 1],
+    expense: [0.68, 0.73, 0.78, 0.82, 0.94, 1],
+  },
+  orbita: {
+    income: [0.38, 0.56, 0.51, 0.78, 0.83, 1],
+    expense: [0.52, 0.63, 0.67, 0.75, 0.86, 1],
+  },
+  naranja: {
+    income: [0.67, 0.81, 0.92, 0.86, 1.08, 1],
+    expense: [0.68, 0.78, 0.82, 0.85, 0.98, 1],
+  },
+  marea: {
+    income: [0.61, 0.74, 0.71, 0.89, 0.93, 1],
+    expense: [0.65, 0.75, 0.78, 0.86, 0.96, 1],
+  },
+  cumbre: {
+    income: [0.89, 0.78, 0.86, 1.04, 0.96, 1],
+    expense: [0.76, 0.82, 0.88, 0.94, 0.98, 1],
+  },
+};
 export function financeFor(companies, transactions, period) {
   const index = Math.max(0, Math.min(5, Number(period.slice(5)) - 5));
   const ids = new Set(companies.map((c) => c.id));
   const extra = transactions.filter(
     (t) => ids.has(t.company) && t.date.startsWith(period),
   );
-  const income =
-    Math.round(
-      companies.reduce((sum, c) => sum + c.income * incomeFactors[index], 0),
+  // Round each company's baseline first so grouped totals reconcile with detail.
+  // Accumulate imported amounts in cents to avoid binary floating-point drift.
+  const total = (field, factors, type) =>
+    (companies.reduce(
+      (sum, c) =>
+        sum +
+        Math.round(
+          c[field] * (monthlyProfiles[c.id]?.[field] ?? factors)[index],
+        ) *
+          100,
+      0,
     ) +
-    extra
-      .filter((t) => t.type === "Ingreso")
-      .reduce((sum, t) => sum + t.amount, 0);
-  const expense =
-    Math.round(
-      companies.reduce((sum, c) => sum + c.expense * expenseFactors[index], 0),
-    ) +
-    extra
-      .filter((t) => t.type === "Egreso")
-      .reduce((sum, t) => sum + t.amount, 0);
+      extra
+        .filter((t) => t.type === type)
+        .reduce((sum, t) => sum + Math.round(t.amount * 100), 0)) /
+    100;
+  const income = total("income", incomeFactors, "Ingreso");
+  const expense = total("expense", expenseFactors, "Egreso");
+  const profit = Math.round((income - expense) * 100) / 100;
   return {
     income,
     expense,
-    profit: income - expense,
-    margin: income ? ((income - expense) / income) * 100 : 0,
+    profit,
+    margin: income ? (profit / income) * 100 : 0,
   };
 }
 
 export function membersFor(company) {
+  const teamNames = {
+    aurora: [
+      "Diego Hernández",
+      "Sofía Ramírez",
+      "Mateo López",
+      "Ana Martínez",
+      "Luis García",
+      "Lucía Mendoza",
+      "Pablo Castillo",
+    ],
+    verde: [
+      "Andrés Silva",
+      "Mariana Ortiz",
+      "Daniel Pérez",
+      "Julia Navarro",
+      "José Romero",
+      "Paula Vega",
+    ],
+    orbita: [
+      "Nicolás Soto",
+      "Fernanda Ruiz",
+      "Gabriel León",
+      "Renata Campos",
+      "Adrián Díaz",
+      "Victoria Molina",
+      "Sebastián Lara",
+    ],
+    naranja: [
+      "Rodrigo Fuentes",
+      "Daniela Ponce",
+      "Bruno Mejía",
+      "Elena Salas",
+      "Hugo Acosta",
+    ],
+    marea: [
+      "Carlos Estrada",
+      "Ximena Serrano",
+      "Javier Robles",
+      "Natalia Moreno",
+      "Iván Rojas",
+      "Andrea Solís",
+    ],
+    cumbre: [
+      "Arturo Medina",
+      "Clara Valdez",
+      "Raúl Peña",
+      "Valentina Rivas",
+      "Óscar Delgado",
+    ],
+  };
   const names = [
     company.admin,
-    "Diego Hernández",
-    "Sofía Ramírez",
-    "Mateo López",
-    "Ana Martínez",
-    "Luis García",
-    "Lucía Mendoza",
-    "Pablo Castillo",
+    ...(teamNames[company.id] ??
+      Array.from({ length: 7 }, (_, i) => `Integrante ${i + 2}`)),
   ];
   return names.slice(0, company.members).map((name, i) => ({
     id: `${company.id}-m${i}`,

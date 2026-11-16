@@ -63,6 +63,10 @@ input:focus-visible,
   outline: 3px solid #94afff;
   outline-offset: 3px;
 }
+summary:focus-visible {
+  outline: 3px solid #94afff;
+  outline-offset: 3px;
+}
 input,
 select {
   color: var(--ink);

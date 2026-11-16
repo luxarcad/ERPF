@@ -575,7 +575,9 @@ function App() {
           <div className="breadcrumb">
             <span>Mi espacio</span>
             <ChevronRight size={14} />
-            <strong>{titles[page]}</strong>
+            <strong>
+              {page === "overview" && !canFinance ? "Mi espacio" : titles[page]}
+            </strong>
           </div>
           <div className="topbar-actions">
             <div className="global-search">
@@ -723,21 +725,24 @@ function App() {
                 </span>
               )}
             </div>
-            <label className="context-select period-select">
-              <CalendarDays size={15} />
-              <select
-                aria-label="Periodo financiero"
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-              >
-                {periods.map((p) => (
-                  <option value={p.value} key={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={13} />
-            </label>
+            {canFinance &&
+              ["overview", "companies", "finances"].includes(page) && (
+                <label className="context-select period-select">
+                  <CalendarDays size={15} />
+                  <select
+                    aria-label="Periodo financiero"
+                    value={period}
+                    onChange={(e) => setPeriod(e.target.value)}
+                  >
+                    {periods.map((p) => (
+                      <option value={p.value} key={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={13} />
+                </label>
+              )}
           </div>
 
           {page === "overview" && (
